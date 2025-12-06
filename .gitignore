@@ -1,0 +1,12 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# API key file
+src/main/resources/translator.properties
+
+# build output (optional, but recommended)
+target/
+*.class
+*.jar
+*.war
+*.log
