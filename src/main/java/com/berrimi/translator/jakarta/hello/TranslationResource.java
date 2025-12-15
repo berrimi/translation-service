@@ -8,6 +8,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Properties;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -38,59 +40,59 @@ class LLMClient {
   }
 
   public static String translate(String text, String to) {
-
     try {
-
       HttpClient client = HttpClient.newHttpClient();
 
       String prompt = "Detect the language of the following text and translate it to " + to +
-          ". Return only the translation, without explanation or additional text:\n" + text;
+          ". Return only the translation, without extra explanation:\n" + text;
 
-      String json = """
+      String body = """
           {
-            "contents": [
-              {
-                "parts": [
-                  { "text": "%s" }
-                ]
-              }
+            "model": "openai/gpt-oss-20b:free",
+            "messages": [
+              { "role": "user", "content": "%s" }
             ]
           }
-          """.formatted(prompt.replace("\"", "\\\""));
+                    """.formatted(escapeJson(prompt));
 
       HttpRequest request = HttpRequest.newBuilder()
-          .uri(URI.create(
-              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="
-                  + API_KEY))
+          .uri(URI.create("https://openrouter.ai/api/v1/chat/completions"))
           .header("Content-Type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(json))
+          .header("Authorization", "Bearer " + API_KEY)
+          .POST(HttpRequest.BodyPublishers.ofString(body))
           .build();
 
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-      return parseGeminiResponse(response.body());
+      return parseOpenRouterResponse(response.body());
 
     } catch (Exception e) {
       return "Error: " + e.getMessage();
     }
   }
 
-  private static String parseGeminiResponse(String responseJson) {
+  private static String escapeJson(String s) {
+    return s.replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t");
+  }
+
+  private static String parseOpenRouterResponse(String responseJson) {
     try {
-      // Very minimal extraction to keep it simple.
-      int index = responseJson.indexOf("\"text\":");
-      if (index == -1) {
+      int idx = responseJson.indexOf("\"content\":");
+      if (idx == -1) {
         return "Invalid response: " + responseJson;
       }
-
-      int start = responseJson.indexOf("\"", index + 7) + 1;
+      int start = responseJson.indexOf("\"", idx + 10) + 1;
       int end = responseJson.indexOf("\"", start);
       return responseJson.substring(start, end);
-
     } catch (Exception e) {
-      return "Parsing error";
+      return "Parsing error: " + e.getMessage();
     }
   }
+
 }
 
 @Path("translate")
@@ -98,16 +100,22 @@ public class TranslationResource {
 
   @GET
   @Produces(MediaType.APPLICATION_JSON)
-  public Response translate(@QueryParam("text") String text, @QueryParam("to") @DefaultValue("darija") String toLang) {
+  public Response translate(@QueryParam("text") String text,
+      @QueryParam("to") @DefaultValue("darija") String toLang) {
 
     if (text == null || text.isBlank()) {
-      return Response.status(400).entity("{\"error\": \"Text cannot be empty\"}").build();
+      JsonObject error = Json.createObjectBuilder()
+          .add("error", "Text cannot be empty")
+          .build();
+      return Response.status(400).entity(error.toString()).build();
     }
 
     String result = LLMClient.translate(text, toLang);
 
-    return Response.ok("{\"translation\": \"" + result + "\"}").build();
+    JsonObject json = Json.createObjectBuilder()
+        .add("translation", result == null ? "" : result)
+        .build();
 
+    return Response.ok(json.toString()).build();
   }
-
 }
