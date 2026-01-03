@@ -109,7 +109,7 @@ public class UserRepository {
   }
 
   /**
-   * Update user information
+   * Update user information (email and phone)
    */
   public static boolean updateUser(String username, String email, String phone) {
     String sql = "UPDATE users SET email = ?, phone = ? WHERE username = ?";
@@ -126,6 +126,32 @@ public class UserRepository {
 
     } catch (SQLException e) {
       System.err.println("Error updating user: " + e.getMessage());
+      return false;
+    }
+  }
+
+  /**
+   * Update user password
+   */
+  public static boolean updatePassword(String username, String oldPassword, String newPassword) {
+    // First verify old password
+    if (!login(username, oldPassword)) {
+      return false;
+    }
+
+    String sql = "UPDATE users SET password = ? WHERE username = ?";
+
+    try (Connection conn = DatabaseManager.getConnection();
+        PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+      pstmt.setString(1, hashPassword(newPassword));
+      pstmt.setString(2, username);
+
+      int rowsAffected = pstmt.executeUpdate();
+      return rowsAffected > 0;
+
+    } catch (SQLException e) {
+      System.err.println("Error updating password: " + e.getMessage());
       return false;
     }
   }
